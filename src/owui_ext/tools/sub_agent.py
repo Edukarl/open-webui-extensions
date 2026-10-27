@@ -28,6 +28,7 @@ import copy
 import json
 import logging
 import re
+from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Callable, List, Literal, Optional, Type
