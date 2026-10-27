@@ -2284,6 +2284,11 @@ RESPONSE REQUIREMENTS:
                         else None,
                     }
 
+                    await _agent_start_limiter.acquire(
+                        self.valves.MAX_AGENT_STARTS_PER_WINDOW,
+                        self.valves.AGENT_START_RATE_WINDOW_SECONDS,
+                    )
+
                     result = await run_sub_agent_loop(
                         request=__request__,
                         user=user,
