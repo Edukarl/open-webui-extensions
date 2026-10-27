@@ -113,6 +113,34 @@ from owui_ext.shared.valves import coerce_user_valves
 log = logging.getLogger(__name__)
 
 
+class _AgentStartRateLimiter:
+    """Process-local rolling-window limiter shared by all Tools instances."""
+
+    def __init__(self) -> None:
+        self._starts: deque[float] = deque()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self, max_starts: int, window_seconds: int) -> None:
+        while True:
+            async with self._lock:
+                now = asyncio.get_running_loop().time()
+
+                while self._starts and now - self._starts[0] >= window_seconds:
+                    self._starts.popleft()
+
+                if len(self._starts) < max_starts:
+                    self._starts.append(now)
+                    return
+
+                delay = window_seconds - (now - self._starts[0])
+
+            # Release the lock while waiting; every caller checks again after waking.
+            await asyncio.sleep(delay)
+
+
+_agent_start_limiter = _AgentStartRateLimiter()
+
+
 class SubAgentTaskItem(BaseModel):
     """A single sub-agent task specification."""
 
