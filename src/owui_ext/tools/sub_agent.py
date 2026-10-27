@@ -1755,6 +1755,16 @@ class Tools:
             default=5,
             description="Maximum number of sub-agents to run in parallel via run_parallel_sub_agents. To fully disable parallel execution, comment out the run_parallel_sub_agents method.",
         )
+        MAX_AGENT_STARTS_PER_WINDOW: int = Field(
+            default=2,
+            ge=1,
+            description="Maximum number of sub-agent starts per AGENT_START_RATE_WINDOW_SECONDS.",
+        )
+        AGENT_START_RATE_WINDOW_SECONDS: int = Field(
+            default=10,
+            ge=1,
+            description="Time window, in seconds, for the instance-wide sub-agent start limit.",
+        )
         ENABLE_CONTEXT_COMPACTION: bool = Field(
             default=True,
             description=(
