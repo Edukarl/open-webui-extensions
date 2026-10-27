@@ -1993,6 +1993,11 @@ RESPONSE REQUIREMENTS:
                 {"role": "user", "content": prompt},
             ]
 
+            await _agent_start_limiter.acquire(
+                self.valves.MAX_AGENT_STARTS_PER_WINDOW,
+                self.valves.AGENT_START_RATE_WINDOW_SECONDS,
+            )
+
             if __event_emitter__:
                 tool_count = len(tools_dict)
                 await __event_emitter__(
