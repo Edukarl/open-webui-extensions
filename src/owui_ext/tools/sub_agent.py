@@ -1,7 +1,7 @@
 """
 title: Sub Agent
 author: skyzi000
-version: 0.6.6
+version: 0.6.7
 license: MIT
 required_open_webui_version: 0.9.6
 description: Run autonomous, tool-heavy tasks in a sub-agent and keep the main chat context clean.
