@@ -1,7 +1,7 @@
 """
 title: Sub Agent
 author: skyzi000
-version: 0.6.6
+version: 0.6.7
 license: MIT
 required_open_webui_version: 0.9.6
 description: Run autonomous, tool-heavy tasks in a sub-agent and keep the main chat context clean.
@@ -34,6 +34,7 @@ import copy
 import json
 import logging
 import re
+from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Callable, List, Literal, Optional, Type
@@ -7620,6 +7621,34 @@ def coerce_user_valves(raw_valves: Any, valves_cls: Type[BaseModel]) -> BaseMode
 log = logging.getLogger(__name__)
 
 
+class _AgentStartRateLimiter:
+    """Process-local rolling-window limiter shared by all Tools instances."""
+
+    def __init__(self) -> None:
+        self._starts: deque[float] = deque()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self, max_starts: int, window_seconds: int) -> None:
+        while True:
+            async with self._lock:
+                now = asyncio.get_running_loop().time()
+
+                while self._starts and now - self._starts[0] >= window_seconds:
+                    self._starts.popleft()
+
+                if len(self._starts) < max_starts:
+                    self._starts.append(now)
+                    return
+
+                delay = window_seconds - (now - self._starts[0])
+
+            # Release the lock while waiting; every caller checks again after waking.
+            await asyncio.sleep(delay)
+
+
+_agent_start_limiter = _AgentStartRateLimiter()
+
+
 class SubAgentTaskItem(BaseModel):
     """A single sub-agent task specification."""
 
@@ -9232,6 +9261,16 @@ class Tools:
             default=5,
             description="Maximum number of sub-agents to run in parallel via run_parallel_sub_agents. To fully disable parallel execution, comment out the run_parallel_sub_agents method.",
         )
+        MAX_AGENT_STARTS_PER_WINDOW: int = Field(
+            default=2,
+            ge=1,
+            description="Maximum number of sub-agent starts per AGENT_START_RATE_WINDOW_SECONDS.",
+        )
+        AGENT_START_RATE_WINDOW_SECONDS: int = Field(
+            default=10,
+            ge=1,
+            description="Time window, in seconds, for the instance-wide sub-agent start limit.",
+        )
         ENABLE_CONTEXT_COMPACTION: bool = Field(
             default=True,
             description=(
@@ -9459,6 +9498,11 @@ RESPONSE REQUIREMENTS:
                 {"role": "system", "content": system_content},
                 {"role": "user", "content": prompt},
             ]
+
+            await _agent_start_limiter.acquire(
+                self.valves.MAX_AGENT_STARTS_PER_WINDOW,
+                self.valves.AGENT_START_RATE_WINDOW_SECONDS,
+            )
 
             if __event_emitter__:
                 tool_count = len(tools_dict)
@@ -9745,6 +9789,11 @@ RESPONSE REQUIREMENTS:
                         if __event_emitter__
                         else None,
                     }
+
+                    await _agent_start_limiter.acquire(
+                        self.valves.MAX_AGENT_STARTS_PER_WINDOW,
+                        self.valves.AGENT_START_RATE_WINDOW_SECONDS,
+                    )
 
                     result = await run_sub_agent_loop(
                         request=__request__,
